@@ -8,11 +8,13 @@
 import SwiftUI
 import AVKit
 import AVFoundation
+import CoreHaptics
 
 struct ContentView: View {
 //    @StateObject private var audioPlayerManager = AudioPlayerManager()
     @StateObject private var audioEngineManager = AudioEngineManager()
     @State private var synthesizer = AVSpeechSynthesizer()
+    @State private var hapticEngine: CHHapticEngine?
     @State private var player: AVPlayer
     @State private var mySliderValue: Double = 0.0
     @State private var videoDuration: Double = 0.0
@@ -29,9 +31,15 @@ struct ContentView: View {
     @State private var commentTimes: [Double] = []
     @State private var commentDescriptions: [String] = []
     
-    
     @State private var audioTimes: [Double] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 90.0, 91.0]
     @State private var audioPitches: [Double] = [1, 2, 3, 2, 1, 0, 1, 3, 2, 3, 4]
+
+    @State private var vibrationTimes: [Double] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 90.0, 91.0]
+    @State private var vibrationIntensity: [Double] = [1, 2, 3, 2, 1, 0, 1, 3, 2, 3, 4]
+    @State private var vibrationDescriptions: [String] = []
+    
+//    @State private var favoriteTopics: Set<Int> = []
+    
     
 //    @State private var audioVolumes1: [Float] = [1.0, 0.5, 0.3]
 //    @State private var audioVolumes2: [Float] = [0.3, 1.0, 0.5]
@@ -47,9 +55,21 @@ struct ContentView: View {
             VideoPlayerView(player: $player)
                 .onAppear {
                     configureAudioSession()
+                    prepareHaptics()
                     setupPlayer()
                     loadCSV(fileName: "scenes", descriptionKey: "description", timeKey: "time\r", descriptions: $sceneDescriptions, times: $sceneTimes)
                     loadCSV(fileName: "comments", descriptionKey: "description", timeKey: "time\r", descriptions: $commentDescriptions, times: $commentTimes)                }
+            
+//            Button(action: {
+//                addFavoriteTopic()
+//            }) {
+//                Text("Add to Favorites")
+//                    .padding()
+//                    .background(Color.blue)
+//                    .foregroundColor(.white)
+//                    .cornerRadius(10)
+//            }
+//            .padding()
             
             Slider(value: Binding(
                 get: { self.mySliderValue },
@@ -92,6 +112,7 @@ struct ContentView: View {
             if !self.isDraggingSlider {
                 self.mySliderValue = time.seconds
             }
+            checkForVibrationTrigger()
         }
     }
     
@@ -165,7 +186,7 @@ struct ContentView: View {
                 self.isSpeaking = false
             } else {
                 self.stableCount += 0.1
-                if self.stableCount > 0.5 && !self.isSpeaking {
+                if self.stableCount > 1.0 && !self.isSpeaking {
                     self.isSpeaking = true
                     self.startSpeechSynthesis()
                 }
@@ -179,6 +200,7 @@ struct ContentView: View {
         for index in audioTimes.indices {
             if (self.mySliderValue - audioTimes[index]) * (audioTimes[index] - self.lastSliderValue) > 0 {
                 audioEngineManager.playSound(pitch: 3 * audioPitches[index], duration: 0.2)
+                return
             }
         }
     }
@@ -200,6 +222,55 @@ struct ContentView: View {
                     }
                 }
             }
+        }
+    }
+    
+    private func prepareHaptics() {
+        do {
+            self.hapticEngine = try CHHapticEngine()
+            try self.hapticEngine?.start()
+        } catch {
+            print("Haptic engine failed to start: \(error.localizedDescription)")
+        }
+    }
+    
+//    private func addFavoriteTopic() {
+//        if let lastIndex = vibrationTimes.lastIndex(where: { $0 < self.mySliderValue }) {
+//            favoriteTopics.insert(lastIndex)
+//            print("Added favorite topic at index \(lastIndex)")
+//        }
+//    }
+    
+    private func checkForVibrationTrigger() {
+        guard player.rate != 0 else { return }
+        
+        if let i1 = vibrationTimes.lastIndex(where: { $0 < self.mySliderValue }){
+            if let i2 = vibrationTimes.firstIndex(where: { $0 > self.lastSliderValue }){
+                if i1 == i2{
+                    print("slider=\(self.mySliderValue)")
+                    print("last_slider=\(self.lastSliderValue)")
+                    print(i1)
+                    triggerVibration(intensity: vibrationIntensity[i1])
+                }
+            }
+        }
+        self.lastSliderValue = self.mySliderValue
+   }
+    
+    private func triggerVibration(intensity: Double) {
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+
+        let intensityParameter = CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(intensity))
+        let sharpnessParameter = CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
+        let event = CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParameter, sharpnessParameter], relativeTime: 0)
+
+        do {
+            let pattern = try CHHapticPattern(events: [event], parameters: [])
+            let player = try hapticEngine?.makePlayer(with: pattern)
+            try player?.start(atTime: CHHapticTimeImmediate)
+            print("Playing Vibration")
+        } catch {
+            print("Failed to play haptic: \(error.localizedDescription)")
         }
     }
 }
