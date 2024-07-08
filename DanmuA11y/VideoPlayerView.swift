@@ -13,6 +13,6 @@ struct VideoPlayerView: View {
     
     var body: some View {
         VideoPlayer(player: player)
-            .frame(height: 300) // Adjust the height as needed
+            .frame(height: 270) // Adjust the height as needed
     }
 }

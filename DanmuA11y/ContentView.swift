@@ -11,7 +11,8 @@ import AVFoundation
 import CoreHaptics
 
 struct ContentView: View {
-//    @StateObject private var audioPlayerManager = AudioPlayerManager()
+    @EnvironmentObject var dataManager: DataManager
+    
     @StateObject private var audioEngineManager = AudioEngineManager()
     @State private var synthesizer = AVSpeechSynthesizer()
     @State private var hapticEngine: CHHapticEngine?
@@ -19,31 +20,20 @@ struct ContentView: View {
     @State private var mySliderValue: Double = 0.0
     @State private var videoDuration: Double = 0.0
     
+    @State private var lastSliderValue: Double = 0.0
     @State private var isDraggingSlider = false
     @State private var wasPlayingBeforeDrag = false
     @State private var stableCount: Double = 0.0
     @State private var isSpeaking = false
-    @State private var lastSliderValue: Double = 0.0
     
     @State private var sceneTimes: [Double] = []
     @State private var sceneDescriptions: [String] = []
+    @State private var sceneHeat: [Int] = [1, 2, 3, 2, 1, 0, 1, 3, 2, 3, 4]
     
-    @State private var commentTimes: [Double] = []
-    @State private var commentDescriptions: [String] = []
-    
-    @State private var audioTimes: [Double] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 90.0, 91.0]
-    @State private var audioPitches: [Double] = [1, 2, 3, 2, 1, 0, 1, 3, 2, 3, 4]
+    @State private var selectedL1: L1? = nil
+    @State private var selectedL2: L2? = nil
+    @State private var selectedTopics: [Int] = []
 
-    @State private var vibrationTimes: [Double] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 90.0, 91.0]
-    @State private var vibrationIntensity: [Double] = [1, 2, 3, 2, 1, 0, 1, 3, 2, 3, 4]
-    @State private var vibrationDescriptions: [String] = []
-    
-//    @State private var favoriteTopics: Set<Int> = []
-    
-    
-//    @State private var audioVolumes1: [Float] = [1.0, 0.5, 0.3]
-//    @State private var audioVolumes2: [Float] = [0.3, 1.0, 0.5]
-//    @State private var audioVolumes3: [Float] = [0.5, 0.3, 1.0]
     
     init() {
         let videoURL = Bundle.main.url(forResource: "video", withExtension: "mp4")!
@@ -57,37 +47,91 @@ struct ContentView: View {
                     configureAudioSession()
                     prepareHaptics()
                     setupPlayer()
-                    loadCSV(fileName: "scenes", descriptionKey: "description", timeKey: "time\r", descriptions: $sceneDescriptions, times: $sceneTimes)
-                    loadCSV(fileName: "comments", descriptionKey: "description", timeKey: "time\r", descriptions: $commentDescriptions, times: $commentTimes)                }
+                    dataManager.loadData(videoName: "video5")
+//                    loadCSV(fileName: "scenes", descriptionKey: "description", timeKey: "time\r", descriptions: $sceneDescriptions, times: $sceneTimes)
+                }
             
-//            Button(action: {
-//                addFavoriteTopic()
-//            }) {
-//                Text("Add to Favorites")
-//                    .padding()
-//                    .background(Color.blue)
-//                    .foregroundColor(.white)
-//                    .cornerRadius(10)
+//            VStack {
+//                // Example usage of DataManager functions
+//                Text("L2 Themes for L1 ID 1: \(arrayToString(dataManager.filterL2ByL1Id(l1Id: 1)))")
+//                Text("Topics for L1 ID 1 and L2 ID 2: \(arrayToString(dataManager.filterTopicsByL1AndL2Id(l1Id: 1, l2Id: 2)))")
+//                Text("Scene ID for Time 10.0: \(dataManager.filterSceneByTime(time: 10.0) ?? -1)")
+//                Text("Topics for L1 ID 1, L2 ID 2, and Scene ID 1: \(topicsToString(dataManager.filterTopicsByL1L2SceneId(l1Id: 1, l2Id: 2, sceneId: 1)))")
+//                Text("Danmu for Topic ID 1: \(danmuToString(dataManager.filterDanmuByTopicId(topicId: 1)))")
 //            }
-//            .padding()
+//            .onAppear {
+//
+//            }
+            
+            NavigationStack {
+                TopicListView(player: $player)
+                    .environmentObject(dataManager)
+            }
+            
+            Spacer()
             
             Slider(value: Binding(
                 get: { self.mySliderValue },
                 set: { (newValue) in
                     self.mySliderValue = newValue
-//                    let currentVolumeIndex = Int((newValue / self.videoDuration) * Double(self.audioVolumes1.count))
-//                    audioPlayerManager.updateAudioVolumes(index: currentVolumeIndex, audioVolumes1: audioVolumes1, audioVolumes2: audioVolumes2, audioVolumes3: audioVolumes3)
                     player.seek(to: CMTime(seconds: newValue, preferredTimescale: 1))
                 }
             ), in: 0...videoDuration, onEditingChanged: handleSliderEditingChanged)
             .accessibilityValue("")//remove the default value announcement in VoiceOver
             .padding()
-            
-            
-            NavigationStack {
-                SceneListView(sceneDescriptions: sceneDescriptions, sceneTimes: sceneTimes, player: $player)
+                        
+            HStack {
+                Menu {
+
+                    ForEach(dataManager.l1List.sorted(by: { $0.L1_theme_id > $1.L1_theme_id })) { l1 in
+                        Menu {
+                            let l2List = dataManager.getL2List(for: l1.L1_theme_id).sorted(by: { $0.L2_theme_id > $1.L2_theme_id })
+                            ForEach(l2List) { l2 in
+                                Button(action: {
+                                    selectedTopics = l2.topics
+                                    selectedL1 = l1
+                                    selectedL2 = l2
+                                }) {
+                                    Text("话题\(l1.L1_theme_id).\(l2.L2_theme_id)" + l2.L2_sum)
+                                }
+                            }
+                        } label: {
+                            Text("类别\(l1.L1_theme_id)" + l1.L1_sum)
+                        }
+                    }
+                    
+                    Button(action: {
+                        selectedL1 = nil
+                        selectedL2 = nil
+                        selectedTopics = []
+                    }) {
+                        Text("全部话题")
+                    }
+                    
+                } label: {
+                    Text(selectedL1 == nil ? "全部话题" : "话题\(selectedL1!.L1_theme_id).\(selectedL2?.L2_theme_id ?? 0) \(selectedL1!.L1_sum) - \(selectedL2?.L2_sum ?? "")")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                }
             }
+            .frame(height: 100)
         }
+    }
+    
+    private func arrayToString(_ array: [Int]?) -> String {
+        guard let array = array else { return "[]" }
+        return array.map { String($0) }.joined(separator: ", ")
+    }
+
+    private func topicsToString(_ topics: [Topic]?) -> String {
+        guard let topics = topics else { return "[]" }
+        return topics.map { "\($0.topic_id)" }.joined(separator: ", ")
+    }
+
+    private func danmuToString(_ danmus: [Danmu]?) -> String {
+        guard let danmus = danmus else { return "[]" }
+        return danmus.map { "\($0.danmu_id)" }.joined(separator: ", ")
     }
     
     private func configureAudioSession() {
@@ -116,55 +160,17 @@ struct ContentView: View {
         }
     }
     
-    
-    private func loadCSV(fileName: String, descriptionKey: String, timeKey: String, descriptions: Binding<[String]>, times: Binding<[Double]>) {
-        guard let path = Bundle.main.path(forResource: fileName, ofType: "csv") else {
-            print("CSV file not found")
-            return
-        }
-
-        do {
-            let csvData = try String(contentsOfFile: path)
-            let rows = csvData.components(separatedBy: "\n").filter { !$0.isEmpty }
-            let headers = rows[0].components(separatedBy: ",")
-            guard headers.count == 2, headers[0] == descriptionKey, headers[1] == timeKey else {
-                print("CSV file format is incorrect")
-                return
-            }
-            var localDescriptions: [String] = []
-            var localTimes: [Double] = []
-            for row in rows.dropFirst() {
-                let columns = row.components(separatedBy: ",")
-                if columns.count == 2,
-                   let description = columns.first?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   let timeString = columns.last?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   let time = Double(timeString) {
-                    localDescriptions.append(description)
-                    localTimes.append(time)
-                }
-            }
-            DispatchQueue.main.async {
-                descriptions.wrappedValue = localDescriptions
-                times.wrappedValue = localTimes
-            }
-        } catch {
-            print("Error reading CSV file: \(error)")
-        }
-    }
-    
     private func handleSliderEditingChanged(_ editing: Bool) {
         if editing {
             self.isDraggingSlider = true
             self.wasPlayingBeforeDrag = player.rate != 0
             player.pause()
-//            audioPlayerManager.startAudio()
             
             self.stableCount = 0.0
             self.lastSliderValue = self.mySliderValue
             startStableTimer()
         } else {
             self.isDraggingSlider = false
-//            audioPlayerManager.stopAudio()
             if self.wasPlayingBeforeDrag {
                 player.play()
             }
@@ -197,22 +203,22 @@ struct ContentView: View {
     }
     
     private func checkForAudioTrigger() {
-        for index in audioTimes.indices {
-            if (self.mySliderValue - audioTimes[index]) * (audioTimes[index] - self.lastSliderValue) > 0 {
-                audioEngineManager.playSound(pitch: 3 * audioPitches[index], duration: 0.2)
+        for index in sceneTimes.indices {
+            if (self.mySliderValue - sceneTimes[index]) * (sceneTimes[index] - self.lastSliderValue) > 0 {
+                audioEngineManager.playSound(pitch: Double(3 * sceneHeat[index]), duration: 0.2)
                 return
             }
         }
     }
 
     private func startSpeechSynthesis() {
-        guard !commentTimes.isEmpty else { return }
+        guard !sceneTimes.isEmpty else { return }
         
         DispatchQueue.global().async {
-            for index in commentTimes.indices {
+            for index in sceneTimes.indices {
                 guard self.isSpeaking else { break }
-                if commentTimes[index] > self.mySliderValue {
-                    let utterance = AVSpeechUtterance(string: self.commentDescriptions[index])
+                if sceneTimes[index] > self.mySliderValue {
+                    let utterance = AVSpeechUtterance(string: self.sceneDescriptions[index])
                     utterance.rate = 0.8
                     utterance.volume = 1.0
                     utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
@@ -234,23 +240,16 @@ struct ContentView: View {
         }
     }
     
-//    private func addFavoriteTopic() {
-//        if let lastIndex = vibrationTimes.lastIndex(where: { $0 < self.mySliderValue }) {
-//            favoriteTopics.insert(lastIndex)
-//            print("Added favorite topic at index \(lastIndex)")
-//        }
-//    }
-    
     private func checkForVibrationTrigger() {
         guard player.rate != 0 else { return }
         
-        if let i1 = vibrationTimes.lastIndex(where: { $0 < self.mySliderValue }){
-            if let i2 = vibrationTimes.firstIndex(where: { $0 > self.lastSliderValue }){
+        if let i1 = sceneTimes.lastIndex(where: { $0 < self.mySliderValue }){
+            if let i2 = sceneTimes.firstIndex(where: { $0 > self.lastSliderValue }){
                 if i1 == i2{
                     print("slider=\(self.mySliderValue)")
                     print("last_slider=\(self.lastSliderValue)")
                     print(i1)
-                    triggerVibration(intensity: vibrationIntensity[i1])
+                    triggerVibration(intensity: Double(sceneHeat[i1]))
                 }
             }
         }
@@ -278,5 +277,6 @@ struct ContentView: View {
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
+            .environmentObject(DataManager())
     }
 }

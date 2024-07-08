@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct DanmuA11yApp: App {
+    var dataManager = DataManager()
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(dataManager)
         }
     }
 }

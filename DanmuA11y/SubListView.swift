@@ -6,13 +6,25 @@
 //
 
 import SwiftUI
+import AVKit
 
 struct SubListView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @Binding var player: AVPlayer
+    
+    var danmu_ids: [Int]
+    
     var body: some View {
         List {
-            Text("这是第1条弹幕")
-            Text("这是第2条弹幕")
-            Text("这是第3条弹幕")
+            
+            ForEach(danmu_ids, id: \.self) { danmu_id in
+                Button(action: {
+                    player.seek(to: CMTime(seconds: dataManager.danmuList[danmu_id - 1].timestamp, preferredTimescale: 1))
+                }) {
+                    Text(dataManager.danmuList[danmu_id - 1].text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
     }
