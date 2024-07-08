@@ -118,7 +118,7 @@ func parseTopicCSV(contents: String) -> [Topic] {
     for row in rows.dropFirst() {
         let columns = row.split(separator: ";").map { String($0) }
         if columns.count >= 6 {
-            print(row)
+//            print(row)
             let topic = Topic(
                 topic_id: Int(columns[0])!,
                 summary: columns[1],
@@ -159,6 +159,10 @@ class DataManager: ObservableObject{
     @Published var topicList: [Topic] = []
     @Published var danmuList: [Danmu] = []
     
+    @Published var sceneTimes: [Double] = []
+    @Published var sceneHeat: [Int] = []
+    @Published var sceneDescriptions: [String] = []
+    
     // Class function to read CSV files and store data into lists
     func loadData(videoName: String) {
         if let l1Path = Bundle.main.path(forResource: "l1", ofType: "csv", inDirectory:videoName),
@@ -192,23 +196,48 @@ class DataManager: ObservableObject{
         return l2List.filter { l1Item.L2_theme_list.contains($0.L2_theme_id) }
     }
     
-//    // Filtering functions
-//    func filterL2ByL1Id(l1Id: Int) -> [Int]? {
-//        return l1List.first { $0.L1_theme_id == l1Id }?.L2_theme_list
-//    }
-//
-//    func filterTopicsByL1AndL2Id(l1Id: Int, l2Id: Int) -> [Int]? {
-//        guard let l2 = l2List.first(where: { $0.L2_theme_id == l2Id }) else {
-//            return nil
-//        }
-//        return l2.topics
-//    }
-
-    func filterSceneByTime(time: Double) -> Int? {
-        return sceneList.first { $0.start <= time && $0.end >= time }?.scene_id
+    func getTopicsByScene(selectedTopics: [Int]) -> [(sceneID: Int, topics: [Topic])] {
+        let selectedTopicObjects = topicList.filter { selectedTopics.isEmpty || selectedTopics.contains($0.topic_id) }
+        let groupedByScene = Dictionary(grouping: selectedTopicObjects.sorted(by: { $0.topic_id < $1.topic_id }), by: { $0.scene_id })
+        return groupedByScene.map { (key: Int, value: [Topic]) -> (sceneID: Int, topics: [Topic]) in
+            return (sceneID: key, topics: value)
+        }.sorted(by: { $0.sceneID < $1.sceneID })
     }
 
-//    func filterTopicsByL1L2SceneId(l1Id: Int, l2Id: Int, sceneId: Int) -> [Topic]? {
-//        return topicList.filter { $0.scene_id == sceneId }
-//    }
+    func getDanmus(for danmuIDs: [Int]) -> [Danmu] {
+        return danmuList.filter { danmuIDs.contains($0.danmu_id) }
+    }
+    
+    func updateSceneData(for selectedTopics: [Int]) {
+        let selectedTopicObjects = topicList.filter { selectedTopics.isEmpty || selectedTopics.contains($0.topic_id) }
+        let groupedByScene = Dictionary(grouping: selectedTopicObjects, by: { $0.scene_id })
+        
+        var newSceneTimes: [Double] = []
+        var newSceneHeat: [Int] = []
+        var newSceneDescriptions: [String] = []
+        
+        for scene in sceneList {
+            let sceneID = scene.scene_id
+            let topics = groupedByScene[sceneID] ?? []
+            let topicCount = topics.count
+            let totalHeat = topics.reduce(0) { $0 + $1.heat }
+            let topicSummaries = topics.map { $0.summary }.joined(separator: ", ")
+            
+            newSceneTimes.append(scene.start)
+            newSceneHeat.append(totalHeat)
+            newSceneDescriptions.append("场景 \(sceneID), 共\(topicCount)话题,\(totalHeat)弹幕。 场景描述: \(scene.avscript)。 主要话题有: \(topicSummaries), ")
+        }
+        
+        let nonZeroHeats = newSceneHeat.filter { $0 > 0 }
+        if let maxHeat = nonZeroHeats.max(), let minHeat = nonZeroHeats.min(), maxHeat != minHeat {
+            let scaleFactor = 29.0 / Double(maxHeat - minHeat) // 29 instead of 30 because we start from 1
+            newSceneHeat = newSceneHeat.map { heat in
+                heat == 0 ? 0 : Int(ceil(1.0 + Double(heat - minHeat) * scaleFactor))
+            }
+        }
+        
+        self.sceneTimes = newSceneTimes
+        self.sceneHeat = newSceneHeat
+        self.sceneDescriptions = newSceneDescriptions
+    }
 }

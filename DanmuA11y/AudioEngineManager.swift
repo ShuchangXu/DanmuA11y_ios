@@ -23,7 +23,8 @@ class AudioEngineManager: ObservableObject {
     }
     
     func playSound(pitch: Double, duration: Double) {
-        let noteNumber = UInt8(60 + 2 * pitch) // Middle C is 60, adjust as needed
+        guard pitch > 0.01 else { return }
+        let noteNumber = UInt8(min(60 + 2 * pitch, 255)) // Middle C is 60, adjust as needed
         sampler.startNote(noteNumber, withVelocity: 127, onChannel: 0)
         
         DispatchQueue.global().asyncAfter(deadline: .now() + duration) {

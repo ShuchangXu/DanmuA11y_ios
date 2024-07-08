@@ -25,18 +25,15 @@ struct ContentView: View {
     @State private var wasPlayingBeforeDrag = false
     @State private var stableCount: Double = 0.0
     @State private var isSpeaking = false
-    
-    @State private var sceneTimes: [Double] = []
-    @State private var sceneDescriptions: [String] = []
-    @State private var sceneHeat: [Int] = [1, 2, 3, 2, 1, 0, 1, 3, 2, 3, 4]
-    
+    @State private var isUserScrolling = false
+        
     @State private var selectedL1: L1? = nil
     @State private var selectedL2: L2? = nil
     @State private var selectedTopics: [Int] = []
 
     
     init() {
-        let videoURL = Bundle.main.url(forResource: "video", withExtension: "mp4")!
+        let videoURL = Bundle.main.url(forResource: "video", withExtension: "mp4", subdirectory: "video1")!
         _player = State(initialValue: AVPlayer(url: videoURL))
     }
     
@@ -47,24 +44,12 @@ struct ContentView: View {
                     configureAudioSession()
                     prepareHaptics()
                     setupPlayer()
-                    dataManager.loadData(videoName: "video5")
-//                    loadCSV(fileName: "scenes", descriptionKey: "description", timeKey: "time\r", descriptions: $sceneDescriptions, times: $sceneTimes)
+                    dataManager.loadData(videoName: "video1")
+                    dataManager.updateSceneData(for: selectedTopics)
                 }
             
-//            VStack {
-//                // Example usage of DataManager functions
-//                Text("L2 Themes for L1 ID 1: \(arrayToString(dataManager.filterL2ByL1Id(l1Id: 1)))")
-//                Text("Topics for L1 ID 1 and L2 ID 2: \(arrayToString(dataManager.filterTopicsByL1AndL2Id(l1Id: 1, l2Id: 2)))")
-//                Text("Scene ID for Time 10.0: \(dataManager.filterSceneByTime(time: 10.0) ?? -1)")
-//                Text("Topics for L1 ID 1, L2 ID 2, and Scene ID 1: \(topicsToString(dataManager.filterTopicsByL1L2SceneId(l1Id: 1, l2Id: 2, sceneId: 1)))")
-//                Text("Danmu for Topic ID 1: \(danmuToString(dataManager.filterDanmuByTopicId(topicId: 1)))")
-//            }
-//            .onAppear {
-//
-//            }
-            
             NavigationStack {
-                TopicListView(player: $player)
+                TopicListView(selectedTopics: $selectedTopics, player: $player, currentTime: $mySliderValue, isUserScrolling: $isUserScrolling)
                     .environmentObject(dataManager)
             }
             
@@ -77,6 +62,7 @@ struct ContentView: View {
                     player.seek(to: CMTime(seconds: newValue, preferredTimescale: 1))
                 }
             ), in: 0...videoDuration, onEditingChanged: handleSliderEditingChanged)
+            .frame(height: 0)
             .accessibilityValue("")//remove the default value announcement in VoiceOver
             .padding()
                         
@@ -92,11 +78,11 @@ struct ContentView: View {
                                     selectedL1 = l1
                                     selectedL2 = l2
                                 }) {
-                                    Text("话题\(l1.L1_theme_id).\(l2.L2_theme_id)" + l2.L2_sum)
+                                    Text("主题\(l1.L1_theme_id).\(l2.L2_theme_id)" + l2.L2_sum)
                                 }
                             }
                         } label: {
-                            Text("类别\(l1.L1_theme_id)" + l1.L1_sum)
+                            Text("分类\(l1.L1_theme_id)" + l1.L1_sum)
                         }
                     }
                     
@@ -105,44 +91,19 @@ struct ContentView: View {
                         selectedL2 = nil
                         selectedTopics = []
                     }) {
-                        Text("全部话题")
+                        Text("全部主题")
                     }
                     
                 } label: {
-                    Text(selectedL1 == nil ? "全部话题" : "话题\(selectedL1!.L1_theme_id).\(selectedL2?.L2_theme_id ?? 0) \(selectedL1!.L1_sum) - \(selectedL2?.L2_sum ?? "")")
+                    Text(selectedL1 == nil ? "全部主题" : "分类\(selectedL1!.L1_theme_id) \(selectedL1!.L1_sum)\n主题\(selectedL2?.L2_theme_id ?? 0) \(selectedL2?.L2_sum ?? "")")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.blue)
                         .foregroundColor(.white)
                 }
             }
-            .frame(height: 100)
+            .frame(height: 80)
         }
     }
-    
-    private func arrayToString(_ array: [Int]?) -> String {
-        guard let array = array else { return "[]" }
-        return array.map { String($0) }.joined(separator: ", ")
-    }
-
-    private func topicsToString(_ topics: [Topic]?) -> String {
-        guard let topics = topics else { return "[]" }
-        return topics.map { "\($0.topic_id)" }.joined(separator: ", ")
-    }
-
-    private func danmuToString(_ danmus: [Danmu]?) -> String {
-        guard let danmus = danmus else { return "[]" }
-        return danmus.map { "\($0.danmu_id)" }.joined(separator: ", ")
-    }
-    
-    private func configureAudioSession() {
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            print("Failed to set audio session category: \(error)")
-        }
-    }
-
     
     private func setupPlayer() {
         guard let currentItem = player.currentItem else { return }
@@ -157,6 +118,15 @@ struct ContentView: View {
                 self.mySliderValue = time.seconds
             }
             checkForVibrationTrigger()
+        }
+    }
+    
+    private func configureAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Failed to set audio session category: \(error)")
         }
     }
     
@@ -192,9 +162,9 @@ struct ContentView: View {
                 self.isSpeaking = false
             } else {
                 self.stableCount += 0.1
-                if self.stableCount > 1.0 && !self.isSpeaking {
+                if self.stableCount > 0.5 && !self.isSpeaking {
                     self.isSpeaking = true
-                    self.startSpeechSynthesis()
+                    self.speakNextItem()
                 }
             }
             checkForAudioTrigger()
@@ -203,33 +173,45 @@ struct ContentView: View {
     }
     
     private func checkForAudioTrigger() {
-        for index in sceneTimes.indices {
-            if (self.mySliderValue - sceneTimes[index]) * (sceneTimes[index] - self.lastSliderValue) > 0 {
-                audioEngineManager.playSound(pitch: Double(3 * sceneHeat[index]), duration: 0.2)
+        for index in dataManager.sceneTimes.indices {
+            if (self.mySliderValue - dataManager.sceneTimes[index]) * (dataManager.sceneTimes[index] - self.lastSliderValue) > 0 {
+                audioEngineManager.playSound(pitch: Double(dataManager.sceneHeat[index]), duration: 0.2)
                 return
             }
         }
     }
-
-    private func startSpeechSynthesis() {
-        guard !sceneTimes.isEmpty else { return }
-        
-        DispatchQueue.global().async {
-            for index in sceneTimes.indices {
-                guard self.isSpeaking else { break }
-                if sceneTimes[index] > self.mySliderValue {
-                    let utterance = AVSpeechUtterance(string: self.sceneDescriptions[index])
-                    utterance.rate = 0.8
-                    utterance.volume = 1.0
-                    utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
-                    self.synthesizer.speak(utterance)
-                    while self.synthesizer.isSpeaking {
-                        usleep(100000)
-                    }
-                }
-            }
+    
+    private func speakNextItem(){
+        guard !dataManager.sceneTimes.isEmpty else { return }
+        if let index = dataManager.sceneTimes.lastIndex(where: { $0 < self.mySliderValue }){
+            let utterance = AVSpeechUtterance(string: self.dataManager.sceneDescriptions[index])
+            utterance.rate = 0.7
+            utterance.volume = 1.0
+            utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+            self.synthesizer.speak(utterance)
         }
+            
     }
+
+//    private func speakAllFollowingItems() {
+//        guard !dataManager.sceneTimes.isEmpty else { return }
+//        
+//        DispatchQueue.global().async {
+//            for index in dataManager.sceneTimes.indices {
+//                guard self.isSpeaking else { break }
+//                if dataManager.sceneTimes[index] > self.mySliderValue {
+//                    let utterance = AVSpeechUtterance(string: self.dataManager.sceneDescriptions[index])
+//                    utterance.rate = 0.8
+//                    utterance.volume = 1.0
+//                    utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+//                    self.synthesizer.speak(utterance)
+//                    while self.synthesizer.isSpeaking {
+//                        usleep(100000)
+//                    }
+//                }
+//            }
+//        }
+//    }
     
     private func prepareHaptics() {
         do {
@@ -243,13 +225,13 @@ struct ContentView: View {
     private func checkForVibrationTrigger() {
         guard player.rate != 0 else { return }
         
-        if let i1 = sceneTimes.lastIndex(where: { $0 < self.mySliderValue }){
-            if let i2 = sceneTimes.firstIndex(where: { $0 > self.lastSliderValue }){
+        if let i1 = dataManager.sceneTimes.lastIndex(where: { $0 < self.mySliderValue }){
+            if let i2 = dataManager.sceneTimes.firstIndex(where: { $0 > self.lastSliderValue }){
                 if i1 == i2{
                     print("slider=\(self.mySliderValue)")
                     print("last_slider=\(self.lastSliderValue)")
                     print(i1)
-                    triggerVibration(intensity: Double(sceneHeat[i1]))
+                    triggerVibration(intensity: Double(dataManager.sceneHeat[i1]))
                 }
             }
         }
