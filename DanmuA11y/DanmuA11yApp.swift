@@ -13,7 +13,7 @@ struct DanmuA11yApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SelectVideoView()
                 .environmentObject(dataManager)
         }
     }

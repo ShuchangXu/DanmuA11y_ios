@@ -30,10 +30,16 @@ struct ContentView: View {
     @State private var selectedL1: L1? = nil
     @State private var selectedL2: L2? = nil
     @State private var selectedTopics: [Int] = []
+    
+    @State private var sceneIDSliderValue: Int = 0
+    @State private var isDataLoaded = false
+    
+    let videoDirectory: String
 
     
-    init() {
-        let videoURL = Bundle.main.url(forResource: "video", withExtension: "mp4", subdirectory: "video1")!
+    init(videoDirectory: String) {
+        self.videoDirectory = videoDirectory
+        let videoURL = Bundle.main.url(forResource: "video", withExtension: "mp4", subdirectory: self.videoDirectory)!
         _player = State(initialValue: AVPlayer(url: videoURL))
     }
     
@@ -44,8 +50,9 @@ struct ContentView: View {
                     configureAudioSession()
                     prepareHaptics()
                     setupPlayer()
-                    dataManager.loadData(videoName: "video1")
+                    dataManager.loadData(videoName: videoDirectory)
                     dataManager.updateSceneData(for: selectedTopics)
+                    isDataLoaded = true
                 }
             
             NavigationStack {
@@ -65,6 +72,20 @@ struct ContentView: View {
             .frame(height: 0)
             .accessibilityValue("")//remove the default value announcement in VoiceOver
             .padding()
+            
+            if isDataLoaded && !dataManager.sceneList.isEmpty {
+                            Stepper(value: $sceneIDSliderValue, in: 0...(dataManager.sceneList.count - 1), step: 1, onEditingChanged: { editing in
+                                if !editing {
+                                    updateSceneIDSliderValue()
+                                }
+                            }) {
+                                Text("场景选择器")
+                                    .accessibilityLabel("\(sceneDescription(for: sceneIDSliderValue))")
+                            }
+                            .onChange(of: sceneIDSliderValue) { newValue in
+                                updateScene(newValue)
+                            }
+                        }
                         
             HStack {
                 Menu {
@@ -104,6 +125,33 @@ struct ContentView: View {
             .frame(height: 80)
         }
     }
+    
+    private func updateSceneIDSliderValue() {
+            if let currentSceneIndex = dataManager.sceneList.firstIndex(where: { $0.start <= mySliderValue && mySliderValue < $0.end }) {
+                sceneIDSliderValue = currentSceneIndex
+            }
+        }
+        
+        private func updateScene(_ sceneID: Int) {
+            if let scene = dataManager.sceneList.first(where: { $0.scene_id == sceneID }) {
+                player.seek(to: CMTime(seconds: scene.start, preferredTimescale: 1))
+            }
+        }
+        
+        private func sceneDescription(for sceneID: Int) -> String {
+            guard let scene = dataManager.sceneList.first(where: { $0.scene_id == sceneID }) else { return "" }
+            return scene.avscript
+        }
+    
+    private func speakSceneDescription(for sceneID: Int) {
+        guard let scene = dataManager.sceneList.first(where: { $0.scene_id == sceneID }) else { return }
+        let utterance = AVSpeechUtterance(string: scene.avscript)
+        utterance.rate = 0.75
+        utterance.volume = 1.0
+        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+        synthesizer.speak(utterance)
+    }
+
     
     private func setupPlayer() {
         guard let currentItem = player.currentItem else { return }
@@ -185,7 +233,7 @@ struct ContentView: View {
         guard !dataManager.sceneTimes.isEmpty else { return }
         if let index = dataManager.sceneTimes.lastIndex(where: { $0 < self.mySliderValue }){
             let utterance = AVSpeechUtterance(string: self.dataManager.sceneDescriptions[index])
-            utterance.rate = 0.7
+            utterance.rate = 0.75
             utterance.volume = 1.0
             utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
             self.synthesizer.speak(utterance)
@@ -256,9 +304,10 @@ struct ContentView: View {
     }
 }
 
+
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
-        ContentView()
+        ContentView(videoDirectory: "video1")
             .environmentObject(DataManager())
     }
 }

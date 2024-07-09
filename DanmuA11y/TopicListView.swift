@@ -37,16 +37,19 @@ struct TopicListView: View {
                                 let danmuTexts = topic.danmu_id_list.compactMap { danmuID in
                                     dataManager.danmuList.first(where: { $0.danmu_id == danmuID })?.text
                                 }.joined(separator: "。")
-                                NavigationLink(destination: SubListView(danmuList: dataManager.getDanmus(for: topic.danmu_id_list), player: $player)) {
-                                    Text("话题\(index + 1). \(topic.summary)")
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                        .foregroundColor(.black)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.vertical, 8)
-                                        .accessibilityLabel("话题\(scene.scene_id).\(index + 1). \(topic.summary). 共\(topic.heat)条。原文: \(danmuTexts)")
+                                NavigationLink(destination: SubListView(danmuList: dataManager.getDanmus(for: topic.danmu_id_list), player: $player)){
+                                    HStack {
+                                        Text("话题\(index + 1). ")
+                                            + Text(topic.context == "_" ? "" : "因" + topic.context + ", ").foregroundColor(.blue)
+                                            + Text(topic.summary)
+                                    }
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .foregroundColor(.black)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 8)
+                                    .accessibilityLabel("话题\(scene.scene_id).\(index + 1). \((topic.context == "_" ? "" : "因为" + topic.context + ",")), \(topic.summary). 共\(topic.heat)条。原文: \(danmuTexts)")
                                 }
-                                .buttonStyle(BorderlessButtonStyle())
                             }
                         }
                         .id(sceneID) // 给每个 section 设置一个唯一的 id
